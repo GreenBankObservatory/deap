@@ -21,12 +21,14 @@ from   wxmpl   import PlotPanelDirector
 from   wxmpl   import FigurePrinter
 from   wxmpl   import FigurePrintout
 from   wxmpl   import LocationPainter
-from   wxmpl   import LINUX_PRINTING_COMMAND
+from   wxmpl   import POSTSCRIPT_PRINTING_COMMAND
 import weakref
 import wx
 import wxmpl
 from   matplotlib.backends.backend_wxagg import FigureCanvasWxAgg
-from   matplotlib.transforms import bound_vertices, inverse_transform_bbox
+from   matplotlib.backend_bases import MouseEvent
+from   matplotlib import transforms
+from   matplotlib.projections.polar import PolarAxes 
 
 #
 # Utility functions and classes
@@ -54,7 +56,7 @@ def get_data(axes, x, y):
     """
     if axes is None: return None, None
 
-    return axes.transData.inverse_xy_tup((x, y))
+    return axes.transData.inverted().transform((x, y))
 
 def get_selected_data(axes, x1, y1, x2, y2):
     """
@@ -67,7 +69,7 @@ def get_selected_data(axes, x1, y1, x2, y2):
     """
     if axes is None: return None, None
 
-    bbox = bound_vertices([(x1, y1), (x2, y2)])
+    bbox = transforms.Bbox([(x1, y1), (x2, y2)])
 
     bxr, byr = wxmpl.get_bbox_lims(bbox)
     axr, ayr = wxmpl.get_bbox_lims(axes.bbox)
@@ -77,15 +79,16 @@ def get_selected_data(axes, x1, y1, x2, y2):
     ymin = max(byr[0], ayr[0])
     ymax = min(byr[1], ayr[1])
     return wxmpl.get_bbox_lims(
-           inverse_transform_bbox(axes.transData,
-                                  bound_vertices([(xmin, ymin), (xmax, ymax)])))
+           transforms.Bbox.inverse_transformed(axes.transData,
+                                  transforms.Bbox([(xmin, ymin), (xmax, ymax)])))
 
 class MyAxesLimits(AxesLimits):
     """
     Extended base class to include rezooming capabilities.
     """
     def __init__(self):
-        AxesLimits.__init__(self)
+        autoscaleUnzoom=True
+        AxesLimits.__init__(self, autoscaleUnzoom)
         self.redo_history = weakref.WeakKeyDictionary()
 
     def _get_redo_history(self, axes):
@@ -337,7 +340,7 @@ class MyPlotPanelDirector(PlotPanelDirector):
         self.panTool.setX(x)
         self.panTool.setY(y)
 
-        if self.selectionEnabled and not wxmpl.is_polar(axes):
+        if self.selectionEnabled and not self.is_polar(axes):
             view.cursor.setCross()
             view.crosshairs.clear()
 
@@ -346,14 +349,15 @@ class MyPlotPanelDirector(PlotPanelDirector):
         Override the wxmpl.find_axes function
         """
         #return wxmpl.find_axes(canvas, x, y)
+        evt = MouseEvent('', canvas, x, y)
         axes = None
         for a in canvas.get_figure().get_axes():
-            if a.in_axes(x, y):
+            if a.in_axes(evt):
                 if axes is None:
                     axes = a
         if axes is None:
             return None, None, None
-        xdata, ydata = axes.transData.inverse_xy_tup((x, y))
+        xdata, ydata = axes.transData.inverted().transform((x, y))
         return axes, xdata, ydata
 
     def find_all_axes(self, canvas, x=None, y=None):
@@ -361,10 +365,11 @@ class MyPlotPanelDirector(PlotPanelDirector):
         Return a list of all axes in canvas
         """
         axeslist = []
+        evt = MouseEvent('', canvas, x, y)
         for a in canvas.get_figure().get_axes():
             if x is None and y is None:
                 axeslist.append(a)
-            elif a.in_axes(x, y):
+            elif a.in_axes(evt):
                 axeslist.append(a)
         return axeslist
 
@@ -418,7 +423,7 @@ class MyPlotPanelDirector(PlotPanelDirector):
 
         if axes is None:
             view.cursor.setNormal()
-        elif wxmpl.is_polar(axes):
+        elif self.is_polar(axes):
             view.cursor.setNormal()
             view.location.set(wxmpl.format_coord(axes, xdata, ydata))
         else:
@@ -490,12 +495,17 @@ class MyPlotPanelDirector(PlotPanelDirector):
             coordstr += "\nx%s=%s,\ty%s=%s"%(i, xi, i, yi)
         self.view.location.set(coordstr[1:])
 
+    def is_polar(self, axes):
+        """
+        Returns a boolean indicating if C{axes} is a polar axes.
+        """
+        return isinstance(axes, PolarAxes)
+
     def mouseMotion(self, evt, x, y):
         """
         Completely overrides base class functionality.
         """
         view = self.getView()
-
         if self.selectedAxes is None:
             axes, xdata, ydata = self.find_axes(view, x, y)
         else:
@@ -507,7 +517,7 @@ class MyPlotPanelDirector(PlotPanelDirector):
         else:
             if axes is None:
                 self.canvasMouseMotion(evt, x, y)
-            elif wxmpl.is_polar(axes):
+            elif self.is_polar(axes):
                 self.polarAxesMouseMotion(evt, x, y, axes, xdata, ydata)
             else:
                 self.axesMouseMotion(evt, x, y, axes, xdata, ydata)
@@ -686,7 +696,6 @@ class PlotView(PlotPanel):
         """
         pData = wx.PrintData()
         pData.SetPaperId(wx.PAPER_LETTER)
-        pData.SetPrinterCommand(LINUX_PRINTING_COMMAND)
         pData.SetOrientation(wx.LANDSCAPE)
         self.printer = FigurePrinter(self, pData)
 
