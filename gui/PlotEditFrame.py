@@ -39,15 +39,14 @@ class PlotEditFrame(wx.Frame):
         """Create labels and controls based on the figure's attributes"""
         
         # Get current axes labels
-        # NOTE: newer matplotlib (1.10) has an axes.get_xlabel() function
         plottitle = xaxislbl = y1axislbl = y2axislbl = "N/A"
         
         if len(self.figure.axes) > 0:
             plottitle = self.figure.axes[0].title.get_text()
-            xaxislbl = self.figure.axes[0].xaxis.get_label().get_text()
-            y1axislbl = self.figure.axes[0].yaxis.get_label().get_text()
+            xaxislbl = self.figure.axes[0].get_xlabel()
+            y1axislbl = self.figure.axes[0].get_ylabel()
         if len(self.figure.axes) == 2:
-            y2axislbl = self.figure.axes[1].yaxis.get_label().get_text()
+            y2axislbl = self.figure.axes[1].get_ylabel()
         
         tLbl = wx.StaticText(self, -1, "Title:")
         tTxt = wx.TextCtrl(self, -1, plottitle, size=(175,-1))
@@ -111,32 +110,36 @@ class PlotEditFrame(wx.Frame):
                                ((3,3),    0, wx.ALIGN_CENTER)])
         lineSizer.AddGrowableCol(0)
         self.scroll.SetSizer(lineSizer)
-        lineBoxSizer.Add(self.scroll, 0, wx.EXPAND)
+        
+        width = self.scroll.GetBestSize().width + 25 # for scrollbar
+        height = self.scroll.GetBestSize().height
+        if height > 400:
+            height = 400
+            width = width + 25 # button size
+        self.scroll.SetScrollbars(0, 10, 1, 1)
+        
+        lineBoxSizer.Add(self.scroll, 1, wx.EXPAND)
         
         controlSizer = wx.BoxSizer(wx.HORIZONTAL)
         controlSizer.AddMany([(self.updateBtn, 1, wx.ALIGN_CENTER | wx.EXPAND),
                               (self.cancelBtn, 1, wx.ALIGN_CENTER | wx.EXPAND)])
         
         boxSizer.AddMany([(axesBoxSizer, 0, wx.EXPAND),
-                          (lineBoxSizer, 0, wx.EXPAND),
+                          (lineBoxSizer, 1, wx.EXPAND),
                           (self.advancedBtn, 0, wx.EXPAND),
-                          (controlSizer, 0, wx.EXPAND)])
+                          (controlSizer, 0, wx.EXPAND)
+                          ])
         
-        width = self.scroll.GetBestSize().width
-        height = self.scroll.GetBestSize().height
-        if height > 400:
-            height = 400
-            width = width + 25 # button size
-        self.scroll.SetSize((width, height))
-        self.scroll.SetScrollbars(0, 1, width, height)
-        
+        totalHeight = height + axesBoxSizer.GetMinSize().GetHeight() + \
+                self.advancedBtn.GetSize().GetHeight() + \
+                controlSizer.GetMinSize().GetHeight()
+        boxSizer.SetMinSize((width, totalHeight))
         self.SetSizer(boxSizer)
         self.SetAutoLayout(1)
         self.Fit()
         
         height = self.GetSize().GetHeight()
-        self.SetSizeHints(minH=height, maxH=height,
-                                minW=width, maxW=width*5)
+        self.SetSizeHints(minH=height+25, maxH=height*2, minW=width, maxW=width*5)
         
 
     def OnUpdate(self, event):
@@ -170,6 +173,7 @@ class PlotEditFrame(wx.Frame):
                 self.figure.axes[1].set_ylabel(axeslbls[3])
         
         # Update lines
+        #HAX
         # indexing could be done more elegantly here
         k = 1
         for i in range(0, len(self.figure.axes)):
@@ -185,8 +189,8 @@ class PlotEditFrame(wx.Frame):
             
             # Update legend
             alpha = 80
-            loc = [2,1][i]
-            pad = 0.1
+            loc = [1,2][i]
+            pad = 0.4
             if self.advanced_options is not None:
                 alphaCtrl, locCtrl, padCtrl = self.advanced_options["legendCtrls"][i]
                 alpha = alphaCtrl.GetValue()
@@ -194,7 +198,7 @@ class PlotEditFrame(wx.Frame):
                 loc = locCtrl[0].GetSelection()
                 if loc < 1: # use user-entered numbers
                     loc = (float(locCtrl[1].GetValue()), float(locCtrl[2].GetValue()))
-            legend = self.figure.axes[i].legend(loc=loc, pad=pad)
+            legend = self.figure.axes[i].legend(loc=loc, borderpad=pad)
             legend.get_frame().set_alpha(alpha/100.0)
         
         # draw
@@ -271,7 +275,7 @@ class PlotEditFrame(wx.Frame):
                                  (wx.StaticText(dialog, -1, "y"), 0, wx.ALIGN_CENTER),
                                  (wx.StaticText(dialog, -1, "Pad"), 0, wx.ALIGN_CENTER)])
         
-        loc_list = ['(select)', 'best', 'upper right', 'upper left', 'lower left',
+        loc_list = ['(select)', 'upper right', 'upper left', 'lower left',
                     'lower right', 'right', 'center left', 'center right',
                     'lower center', 'upper center', 'center']
         
@@ -288,11 +292,22 @@ class PlotEditFrame(wx.Frame):
                                  initial=axis.get_legend().get_frame().get_alpha()*100,
                                  size=(75,-1))
             aloc = wx.Choice(dialog, -1, choices=loc_list)
-            aloc_x = wx.TextCtrl(dialog, -1, str(axis.get_legend().get_frame().get_x())[:7],
+            
+            # Normalize the legend coordinates
+            # matplotlib 1.1.0 has location as 0-1 inside the graph frame
+            # (0,0) is the lower left corner of the graph
+            x0graph, y0graph, x1graph, y1graph = axis.get_frame().get_extents().bounds
+            x0lgd, y0lgd, _, _ = axis.get_legend().get_frame().get_extents().bounds
+            
+            normX = round((x0lgd - x0graph) / (x1graph), 5)
+            normY = round((y0lgd - y0graph) / (y1graph), 5)
+            
+            aloc_x = wx.TextCtrl(dialog, -1, str(normX),
                                  size=(75,-1))
-            aloc_y = wx.TextCtrl(dialog, -1, str(axis.get_legend().get_frame().get_y())[:7],
+            aloc_y = wx.TextCtrl(dialog, -1, str(normY),
                                  size=(75,-1))
-            apad = wx.TextCtrl(dialog, -1, str(axis.get_legend().pad)[:7],
+            
+            apad = wx.TextCtrl(dialog, -1, str(axis.get_legend().borderpad),
                                  size=(75,-1))
             legendGridSizer.AddMany([(albl,   0, wx.ALIGN_CENTER),
                                      (aalpha, 0, wx.ALIGN_CENTER),
@@ -316,7 +331,7 @@ class PlotEditFrame(wx.Frame):
                     lbltxt = line.get_label()[:37]+"..."
                 lbl = wx.StaticText(advscroll, -1, lbltxt, style=wx.ALIGN_RIGHT | wx.ST_NO_AUTORESIZE)
                 alphabox = wx.SpinCtrl(advscroll, -1, style=wx.SP_ARROW_KEYS, min=0,
-                                       max=100, initial=line.get_alpha()*100,
+                                       max=100, initial=(line.get_alpha() or 1.0)*100,
                                        size=(75,-1))
                 zorderbox = wx.TextCtrl(advscroll, -1, str(line.get_zorder()), size=(30,-1))
                 lineGridSizer.AddMany([(lbl, 0, wx.ALIGN_RIGHT | wx.EXPAND),
@@ -328,7 +343,7 @@ class PlotEditFrame(wx.Frame):
             lineGridSizer.AddGrowableCol(0)
             lineGridSizer.AddGrowableCol(3)
             advscroll.SetSizer(lineGridSizer)
-            lineBoxSizer.Add(advscroll, 0, wx.EXPAND | wx.ALL)
+            lineBoxSizer.Add(advscroll, 1, wx.EXPAND | wx.ALL)
             lineBoxes.append(lineBoxSizer)
         
         legendBoxSizer.Add(legendGridSizer, 0, wx.EXPAND | wx.ALL)
@@ -345,15 +360,18 @@ class PlotEditFrame(wx.Frame):
         boxSizer = wx.BoxSizer(wx.VERTICAL)
         boxSizer.Add(legendBoxSizer, 0, wx.EXPAND | wx.ALL)
         for linebox in lineBoxes:
-            boxSizer.Add(linebox, 0, wx.EXPAND | wx.ALL)
+            boxSizer.Add(linebox, 1, wx.EXPAND | wx.ALL)
         boxSizer.Add(controlSizer, 0, wx.EXPAND | wx.ALL)
+        
+        totalHeight = legendBoxSizer.GetMinSize().GetHeight() + controlSizer.GetMinSize().GetHeight()
         
         for advscroll in scrolls:
             width = advscroll.GetBestSize().width
-            height = min(advscroll.GetBestSize().height, 250)
-            advscroll.SetSize((width, height))
-            advscroll.SetScrollbars(0, 1, width, height)
+            height = min(advscroll.GetBestSize().height, 250) + 25
+            advscroll.SetScrollbars(0, 10, 1, 1)
+            totalHeight += height
         
+        boxSizer.SetMinSize((width, totalHeight))
         dialog.SetSizer(boxSizer)
         dialog.SetAutoLayout(1)
         dialog.Fit()
