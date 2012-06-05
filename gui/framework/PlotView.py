@@ -79,15 +79,16 @@ def get_selected_data(axes, x1, y1, x2, y2):
     ymin = max(byr[0], ayr[0])
     ymax = min(byr[1], ayr[1])
     return wxmpl.get_bbox_lims(
-           transforms.Bbox.inverse_transformed(axes.transData,
-                                  transforms.Bbox([(xmin, ymin), (xmax, ymax)])))
+           transforms.Bbox.inverse_transformed(
+                           transforms.Bbox([(xmin, ymin), (xmax, ymax)])
+                           , axes.transData))
 
 class MyAxesLimits(AxesLimits):
     """
     Extended base class to include rezooming capabilities.
     """
     def __init__(self):
-        autoscaleUnzoom=True
+        autoscaleUnzoom = False # changed in wxmpl 1.3.0
         AxesLimits.__init__(self, autoscaleUnzoom)
         self.redo_history = weakref.WeakKeyDictionary()
 
@@ -149,6 +150,7 @@ class PanTool:
         self.isPanning = False
         self.panx      = 0
         self.pany      = 0
+        self.panfactor = 50.0   # for reasonable speeds; must be a float
 
     def getView(self):
         return self.view
@@ -192,16 +194,13 @@ class PanTool:
 
         if not is_log_x(axes):
             xtick = axes.get_xaxis()._get_tick(major=False)._size
-            movex = (self.getX() - x) / xtick / 10
-            # TBF: matplotlib's Axes' panx method is broken, so we do it here
-            #      in the next two lines for them.
+            movex = (self.getX() - x) / xtick / self.panfactor
             axes.xaxis.pan(movex)
-            axes._send_xlim_event()
             self.panx += movex
         if not is_log_y(axes):
             ytick = axes.get_yaxis()._get_tick(major=False)._size
-            movey = (self.getY() - y) / ytick / 10
-            axes.pany(movey)
+            movey = (self.getY() - y) / ytick / self.panfactor
+            axes.yaxis.pan(movey)
             self.pany += movey
 
         self.setX(x)
@@ -222,17 +221,15 @@ class PanTool:
         for axes in axesList:
             if not is_log_x(axes):
                 xtick = axes.get_xaxis()._get_tick(major=False)._size
-                movex = (self.getX() - x) / xtick / 10
-                # TBF: matplotlib's Axes' panx method is broken, so we do it here
+                movex = (self.getX() - x) / xtick / self.panfactor
                 axes.xaxis.pan(movex)
                 if i==0:    # we want to keep all plots on a common x-axis
-                    xmin, xmax = axes.viewLim.intervalx().get_bounds()
+                    xmin, xmax = axes.viewLim.intervalx
                 axes.set_xlim(xmin, xmax)
-                axes._send_xlim_event()
             if not is_log_y(axes):
                 ytick = axes.get_yaxis()._get_tick(major=False)._size
-                movey = (self.getY() - y) / ytick / 10
-                axes.pany(movey)
+                movey = (self.getY() - y) / ytick / self.panfactor
+                axes.yaxis.pan(movey)
             i += 1
 
         self.panx += movex
@@ -252,13 +249,10 @@ class PanTool:
         panx = self.panx
         pany = self.pany
         if not is_log_x(axes):
-            # TBF: matplotlib's Axes' panx method is broken, so we do it
-            #      here for them.
             axes.xaxis.pan(-self.panx)
-            axes._send_xlim_event()
             self.panx = 0
         if not is_log_y(axes):
-            axes.pany(-self.pany)
+            axes.yaxis.pan(-self.pany)
             self.pany = 0
 
         FigureCanvasWxAgg.draw(self.getView())
@@ -274,17 +268,13 @@ class PanTool:
         xmin, xmax = 0, 0
         for axes in axesList:
             if not is_log_x(axes):
-                # TBF: matplotlib's Axes' panx method is broken, so we do it
-                #      here for them.
                 axes.xaxis.pan(-self.panx)
                 if i==0:    # we want to keep all plots on a common x-axis
-                    xmin, xmax = axes.viewLim.intervalx().get_bounds()
+                    xmin, xmax = axes.viewLim.intervalx
                 axes.set_xlim(xmin, xmax)
-                axes._send_xlim_event()
 
             if not is_log_y(axes):
-                axes.pany(-self.pany)
-                axes._send_ylim_event()
+                axes.yaxis.pan(-self.pany)
 
             i += 1
 
@@ -411,7 +401,7 @@ class MyPlotPanelDirector(PlotPanelDirector):
         xrange, yrange = get_selected_data(axes, x0, y0, x, y)
 
         if axes is not None:
-            xdata, ydata = axes.transData.inverse_xy_tup((x, y))
+            xdata, ydata = axes.transData.inverted().transform((x,y))
             if self.zoomEnabled:
                 for ax in self.find_all_axes(view, x, y):
                     xrange, yrange = get_selected_data(ax, x0, y0, x, y)
@@ -464,11 +454,9 @@ class MyPlotPanelDirector(PlotPanelDirector):
             for axes in self.find_all_axes(view, x, y): # unzoom all axes
                 self.limits.restore(axes)
                 if not self.limits.can_unzoom(axes):
-                    # rescale manually - wxmpl will try to autoscale
                     if xmin is None or xmax is None: # make sure x-axis matches
-                        xmin, xmax = axes.viewLim.intervalx().get_bounds()
+                        xmin, xmax = axes.viewLim.intervalx
                     axes.set_xlim(xmin, xmax)
-                    axes._send_xlim_event()
             view.crosshairs.clear()
             view.draw()
             view.crosshairs.set(x, y)
