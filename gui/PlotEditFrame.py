@@ -173,7 +173,6 @@ class PlotEditFrame(wx.Frame):
                 self.figure.axes[1].set_ylabel(axeslbls[3])
         
         # Update lines
-        #HAX
         # indexing could be done more elegantly here
         k = 1
         for i in range(0, len(self.figure.axes)):

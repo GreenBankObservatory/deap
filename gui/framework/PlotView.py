@@ -28,7 +28,7 @@ import wxmpl
 from   matplotlib.backends.backend_wxagg import FigureCanvasWxAgg
 from   matplotlib.backend_bases import MouseEvent
 from   matplotlib import transforms
-from   matplotlib.projections.polar import PolarAxes 
+from   matplotlib.projections.polar import PolarAxes
 
 #
 # Utility functions and classes
@@ -774,23 +774,26 @@ class PlotView(PlotPanel):
         """
         printer = self.GetPrinter()
         fig = self.get_figure()
-        #printer.previewFigure(fig, "Plot")
         self.previewFigure(fig, "Plot")
         self.draw()
     
     def previewFigure(self, figure, title=None):
         """
-        Replace wxmpl.FigurePrinter.previewFigure method - fails in
-        version 1.2.9 because FigurePrintout is missing method HasPage
+        Replace wxmpl.FigurePrinter.previewFigure method
         """
         window = self.printer.view
         while not isinstance(window, wx.Frame):
             window = window.GetParent()
             assert window is not None
 
-        fpo = MyFigurePrintout(figure, title)
-        fpo4p = MyFigurePrintout(figure, title)
-        preview = wx.PrintPreview(fpo, fpo4p, self.printer.pData)
+        fpo = FigurePrintout(figure, title)
+        fpo4p = FigurePrintout(figure, title)
+        
+        # need to make a copy of the print data
+        # Fix for wxmpl version 2.0dev
+        pData = wx.PrintDialogData(self.printer.pData)
+        
+        preview = wx.PrintPreview(fpo, fpo4p, pData)
         frame = wx.PreviewFrame(preview, window, 'Print Preview')
         if self.printer.pData.GetOrientation() == wx.PORTRAIT:
             frame.SetSize(wx.Size(450, 625))
@@ -810,20 +813,19 @@ class PlotView(PlotPanel):
         # a reference to the one inside the PrintDialogData that will
         # be destroyed when the dialog is destroyed (causing segfaults)
         printData = wx.PrintData(printer.getPrintData())
-        #printer.printFigure(fig, "Plot")
         self.printFigure(fig, "Plot")
         self.printer.setPrintData(printData) # reset print data
         self.draw()
 
     def printFigure(self, figure, title=None):
         """
-        Replace wxmpl.FigurePrinter.printFigure method - fails in
-        version 1.2.9 because FigurePrintout is missing method HasPage
+        Replace wxmpl.FigurePrinter.printFigure method
         """
         pdData = wx.PrintDialogData()
         pdData.SetPrintData(self.printer.pData)
+        pdData.SetToPage(1) # Fix for wxmpl version 2.0dev
         printer = wx.Printer(pdData)
-        fpo = MyFigurePrintout(figure, title)
+        fpo = FigurePrintout(figure, title)
         if printer.Print(self.printer.view, fpo, True):
             self.printer.pData = pdData.GetPrintData()
 
@@ -833,7 +835,6 @@ class PlotView(PlotPanel):
         """
         data = wx.PrintDialogData(self.printer.getPrintData())
         printerDialog = wx.PrintDialog(self, data)
-        printerDialog.GetPrintDialogData().SetSetupDialog(True)
         printerDialog.ShowModal()
 
         # this makes a copy of the wx.PrintData instead of just saving
@@ -881,11 +882,3 @@ class PlotView(PlotPanel):
         Window to unzoom functionality.
         """
         self.director.ZoomOut()
-
-class MyFigurePrintout(FigurePrintout):
-    """
-    Fix for wxmpl.FigurePrinter.printFigure method - fails in
-    version 1.2.9 because FigurePrintout is missing method HasPage
-    """
-    def HasPage(self, page):
-        return page <= 1
