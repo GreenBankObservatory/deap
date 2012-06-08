@@ -66,7 +66,7 @@ class Notebook(wx.Notebook):
         event.Skip()
 
         # But what we really care about is activating any new selection.
-        if event.GetSelection() >= 0:
+        if event.GetSelection() >= 0 and event.GetOldSelection() >= 0:
             page = self.GetPage(event.GetSelection())
             self.GetSite().ActivatePanel(page)
 
@@ -74,7 +74,7 @@ class Notebook(wx.Notebook):
         "Deactivate the formerly selected page."
         
         # Notebook events are command events... but we don't want them
-        # to propagate up the containement heirarchy.
+        # to propagate up the containment heirarchy.
         if self is not event.GetEventObject(): return
         
         # OTOH, we *do* want the subclass event handler to get called.

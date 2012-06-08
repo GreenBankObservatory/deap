@@ -177,7 +177,7 @@ class Frame(wx.Frame):
 
         wx.EVT_MENU_OPEN(self, self.UpdateMenus)
 
-    def InitFileMenu(self):        
+    def InitFileMenu(self):
         fileMnu = wx.Menu()
         fileMnu.Append(ID_FILE_OPEN, "&Open...\tCtrl+O", "Open a file.")
         fileMnu.Append(ID_FILE_CLOSE, "&Close\tCtrl+W", "Close the current window.")
@@ -197,7 +197,7 @@ class Frame(wx.Frame):
         wx.EVT_MENU(self, ID_FILE_EXIT, self.OnExit)
         return fileMnu
 
-    def InitEditMenu(self):    
+    def InitEditMenu(self):
         editMnu = wx.Menu()
         editMnu.Append(ID_EDIT_UNDO,       "&Undo\tCtrl+Z")
         editMnu.Append(ID_EDIT_REDO,       "&Redo\tCtrl+Y")
@@ -223,13 +223,13 @@ class Frame(wx.Frame):
         wx.EVT_MENU(self, ID_VIEW_FULLSCREEN, self.OnFullScreen)
         return viewMnu
 
-    def InitToolsMenu(self):    
+    def InitToolsMenu(self):
         toolsMnu = wx.Menu()
         toolsMnu.Append(ID_TOOLS_PLOTEDIT,       "&Edit Plot...")
         toolsMnu.Append(ID_TOOLS_OPTIONS,        "&Options...")
         return toolsMnu
 
-    def InitHelpMenu(self):        
+    def InitHelpMenu(self):
         helpMnu = wx.Menu()
         helpMnu.Append(ID_HELP_SELF_TEST,        "&Self Test...")
         helpMnu.AppendSeparator()
