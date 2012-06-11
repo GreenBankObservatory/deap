@@ -73,7 +73,7 @@ class PlotEditFrame(wx.Frame):
         for axis in self.figure.axes:
             for line in axis.lines:
                 color = self.MplToWxColour(line.get_color())
-                lineTxt = wx.TextCtrl(self.scroll, -1, line.get_label(), size=(175,-1))
+                lineTxt = wx.TextCtrl(self.scroll, -1, line.get_label().lstrip("_"), size=(175,-1))
                 lineColor = wx.TextCtrl(self.scroll, -1, "#%02x%02x%02x"%color.Get())
                 lineBtn = wx.Button(self.scroll, -1, size=(25,25))
                 lineBtn.SetBackgroundColour(color)
@@ -177,7 +177,7 @@ class PlotEditFrame(wx.Frame):
         k = 1
         for i in range(0, len(self.figure.axes)):
             for j in range(0, len(self.figure.axes[i].lines)):
-                self.figure.axes[i].lines[j].set_label(self.lineCtrls[k][0].GetValue())
+                self.figure.axes[i].lines[j].set_label(self.lineCtrls[k][0].GetValue().lstrip("_"))
                 self.figure.axes[i].lines[j].set_color(self.lineCtrls[k][1].GetValue())
                 
                 if self.advanced_options is not None:
@@ -187,18 +187,34 @@ class PlotEditFrame(wx.Frame):
                 k += 1
             
             # Update legend
-            alpha = 80
-            loc = [1,2][i]
-            pad = 0.4
+            hasLegend = False
             if self.advanced_options is not None:
-                alphaCtrl, locCtrl, padCtrl = self.advanced_options["legendCtrls"][i]
-                alpha = alphaCtrl.GetValue()
-                pad = float(padCtrl.GetValue())
-                loc = locCtrl[0].GetSelection()
-                if loc < 1: # use user-entered numbers
-                    loc = (float(locCtrl[1].GetValue()), float(locCtrl[2].GetValue()))
-            legend = self.figure.axes[i].legend(loc=loc, borderpad=pad)
-            legend.get_frame().set_alpha(alpha/100.0)
+                if self.advanced_options["legendCtrls"][-1][1].GetValue():
+                    # chose legend in advanced options
+                    hasLegend = True
+            else:
+                for axis in self.figure.axes:
+                    if axis.get_legend() is not None:
+                        # already has a legend
+                        hasLegend = True
+            
+            if hasLegend:
+                alpha = 80
+                loc = [1,2][i]
+                pad = 0.4
+                size = 14.0
+                if self.advanced_options is not None:
+                    alphaCtrl, locCtrl, padCtrl, sizeCtrl = self.advanced_options["legendCtrls"][i]
+                    alpha = alphaCtrl.GetValue()
+                    pad = float(padCtrl.GetValue())
+                    size = float(sizeCtrl.GetValue())
+                    loc = locCtrl[0].GetSelection()
+                    if loc < 1: # use user-entered numbers
+                        loc = (float(locCtrl[1].GetValue()), float(locCtrl[2].GetValue()))
+                legend = self.figure.axes[i].legend(loc=loc, borderpad=pad, prop={"size":size})
+                legend.get_frame().set_alpha(alpha/100.0)
+            else:
+                self.figure.axes[i].legend_ = None
         
         # draw
         self.plot.draw()
@@ -266,13 +282,17 @@ class PlotEditFrame(wx.Frame):
         # Create legend box
         legendBox = wx.StaticBox(dialog, -1, "Legend")
         legendBoxSizer = wx.StaticBoxSizer(legendBox, wx.VERTICAL)
-        legendGridSizer = wx.FlexGridSizer(rows=len(self.figure.axes)+1, cols=6, vgap=3, hgap=3)
+        legendGridSizer = wx.FlexGridSizer(rows=len(self.figure.axes)+1, cols=7, vgap=3, hgap=3)
+        rbtn1 = wx.RadioButton(dialog, -1, "No Legend", style=wx.RB_GROUP)
+        rbtn2 = wx.RadioButton(dialog, -1, "Legend")
+        rbtn1.SetValue(True)
         legendGridSizer.AddMany([(wx.StaticText(dialog, -1, ""), 0, wx.ALIGN_CENTER),
                                  (wx.StaticText(dialog, -1, "Transparency"), 0, wx.ALIGN_CENTER),
                                  (wx.StaticText(dialog, -1, "Location"), 0, wx.ALIGN_CENTER),
                                  (wx.StaticText(dialog, -1, "x"), 0, wx.ALIGN_CENTER),
                                  (wx.StaticText(dialog, -1, "y"), 0, wx.ALIGN_CENTER),
-                                 (wx.StaticText(dialog, -1, "Pad"), 0, wx.ALIGN_CENTER)])
+                                 (wx.StaticText(dialog, -1, "Pad"), 0, wx.ALIGN_CENTER),
+                                 (wx.StaticText(dialog, -1, "Size"), 0, wx.ALIGN_CENTER)])
         
         loc_list = ['(select)', 'upper right', 'upper left', 'lower left',
                     'lower right', 'right', 'center left', 'center right',
@@ -287,34 +307,47 @@ class PlotEditFrame(wx.Frame):
             advscroll = wx.ScrolledWindow(dialog, -1)
             scrolls.append(advscroll)
             albl = wx.StaticText(dialog, -1, "Y%s-axis"%i)
+            
+            legend_props = {'alpha':    80,
+                            'loc_x':    0.0,
+                            'loc_y':    0.0,
+                            'pad':      0.4,
+                            'size':     14.0}
+            
+            if axis.get_legend() is not None:
+                rbtn2.SetValue(True)
+                legend = axis.get_legend()
+                legend_props['alpha'] = (legend.get_frame().get_alpha() or 1.0)*100
+                
+                # Normalize the legend coordinates
+                # matplotlib 1.1.0 has location as 0-1 inside the graph frame
+                # (0,0) is the lower left corner of the graph
+                x0graph, y0graph, x1graph, y1graph = axis.get_frame().get_extents().bounds
+                x0lgd, y0lgd, _, _ = legend.get_frame().get_extents().bounds
+                legend_props['loc_x'] = round((x0lgd - x0graph) / (x1graph), 5)
+                legend_props['loc_y'] = round((y0lgd - y0graph) / (y1graph), 5)
+                
+                legend_props['pad'] = legend.borderpad
+                legend_props['size'] = legend.get_texts()[0].get_fontsize()
+            
             aalpha = wx.SpinCtrl(dialog, -1, style=wx.SP_ARROW_KEYS, min=0, max=100,
-                                 initial=axis.get_legend().get_frame().get_alpha()*100,
-                                 size=(75,-1))
+                                 initial=legend_props['alpha'], size=(75,-1))
             aloc = wx.Choice(dialog, -1, choices=loc_list)
             
-            # Normalize the legend coordinates
-            # matplotlib 1.1.0 has location as 0-1 inside the graph frame
-            # (0,0) is the lower left corner of the graph
-            x0graph, y0graph, x1graph, y1graph = axis.get_frame().get_extents().bounds
-            x0lgd, y0lgd, _, _ = axis.get_legend().get_frame().get_extents().bounds
+            aloc_x = wx.TextCtrl(dialog, -1, str(legend_props['loc_x']), size=(75,-1))
+            aloc_y = wx.TextCtrl(dialog, -1, str(legend_props['loc_y']), size=(75,-1))
             
-            normX = round((x0lgd - x0graph) / (x1graph), 5)
-            normY = round((y0lgd - y0graph) / (y1graph), 5)
+            apad = wx.TextCtrl(dialog, -1, str(legend_props['pad']), size=(75,-1))
+            asize = wx.TextCtrl(dialog, -1, str(legend_props['size']), size=(75,-1))
             
-            aloc_x = wx.TextCtrl(dialog, -1, str(normX),
-                                 size=(75,-1))
-            aloc_y = wx.TextCtrl(dialog, -1, str(normY),
-                                 size=(75,-1))
-            
-            apad = wx.TextCtrl(dialog, -1, str(axis.get_legend().borderpad),
-                                 size=(75,-1))
             legendGridSizer.AddMany([(albl,   0, wx.ALIGN_CENTER),
                                      (aalpha, 0, wx.ALIGN_CENTER),
                                      (aloc,   0, wx.ALIGN_CENTER),
                                      (aloc_x, 0, wx.ALIGN_CENTER),
                                      (aloc_y, 0, wx.ALIGN_CENTER),
-                                     (apad, 0, wx.ALIGN_CENTER),])
-            self.advanced_options["legendCtrls"].append((aalpha, (aloc, aloc_x, aloc_y), apad))
+                                     (apad,   0, wx.ALIGN_CENTER),
+                                     (asize,  0, wx.ALIGN_CENTER)])
+            self.advanced_options["legendCtrls"].append((aalpha, (aloc, aloc_x, aloc_y), apad, asize))
             
             lineBox = wx.StaticBox(dialog, -1, "Y%s lines"%i)
             lineBoxSizer = wx.StaticBoxSizer(lineBox, wx.VERTICAL)
@@ -345,7 +378,10 @@ class PlotEditFrame(wx.Frame):
             lineBoxSizer.Add(advscroll, 1, wx.EXPAND | wx.ALL)
             lineBoxes.append(lineBoxSizer)
         
-        legendBoxSizer.Add(legendGridSizer, 0, wx.EXPAND | wx.ALL)
+        legendBoxSizer.AddMany([(rbtn1, 0, wx.EXPAND),
+                                (rbtn2, 0, wx.EXPAND),
+                                (legendGridSizer, 0, wx.EXPAND | wx.ALL)])
+        self.advanced_options["legendCtrls"].append((rbtn1, rbtn2))
         
         updateBtn = wx.Button(dialog, wx.ID_OK, "OK")
         cancelBtn = wx.Button(dialog, wx.ID_CANCEL, "Cancel")
@@ -378,7 +414,7 @@ class PlotEditFrame(wx.Frame):
     def OnAdvancedUpdate(self, event):
         """Validate and store advanced options for updating"""
         IsValidData = True
-        for axis in self.advanced_options["legendCtrls"]:
+        for axis in self.advanced_options["legendCtrls"][:-1]:
             loc_s, loc_x, loc_y = axis[1]
             if loc_s.GetSelection() < 1:
                 try:
@@ -405,6 +441,14 @@ class PlotEditFrame(wx.Frame):
                 IsValidData = False
                 lpad.SetBackgroundColour(wx.Colour(255,210,210))
             lpad.Refresh()
+            
+            lsize = axis[3]
+            try:
+                float(lsize.GetValue())
+            except ValueError:
+                IsValidData = False
+                lsize.SetBackgroundColour(wx.Colour(255,210,210))
+            lsize.Refresh()
         
         for line in self.advanced_options["lineCtrls"]:
             try:
@@ -419,8 +463,8 @@ class PlotEditFrame(wx.Frame):
             dialog = event.GetEventObject().GetParent()
             dialog.Close()
         else:
-            wx.MessageBox("Please enter valid numeric values for position and "
-                        + "ordering.", "Error", wx.ICON_ERROR)
+            wx.MessageBox("Please enter valid numeric values for position, "
+                        + "ordering, and font size.", "Error", wx.ICON_ERROR)
     
     def OnCancel(self, event):
         """Exit the editor"""
