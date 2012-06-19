@@ -309,16 +309,19 @@ class DEAPPanel(Panel):
 
     def OnOptions(self, event):
         cl     = self.GetCommandLine()
-        dialog = OptionsDialog(self, -1)
+        if cl is not None:
+            dialog = OptionsDialog(self, -1)
 
-        dialog.SetAutoComplete(cl.autoComplete)
-        if wx.ID_OK <> dialog.ShowModal():
-            dialog.destroy()
-            return
+            dialog.SetAutoComplete(cl.autoComplete)
+            if wx.ID_OK <> dialog.ShowModal():
+                dialog.destroy()
+                return
 
-        # TBF
-        cl.autoComplete = dialog.GetAutoComplete()
-        cl.wrap(dialog.GetWordWrap())
+            # TBF
+            cl.autoComplete = dialog.GetAutoComplete()
+            cl.wrap(dialog.GetWordWrap())
+        else:
+            wx.MessageBox('No command line options available', 'Options', wx.OK)
 
     def OnOpen(self, event):
         """
