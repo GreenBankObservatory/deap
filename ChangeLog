@@ -1,0 +1,17 @@
+CHANGES
+=======
+
+v1.0
+----
+
+* handle options for no command line
+* legend in advanced options now handles no legend, no labeled lines, and changing font size
+* fixed segfault when closing from PlotView tab
+* fixed/updated printing functions
+* fixed pan and zoom for single axes plots
+* fixed Plot Edit gui
+* Changes for newer matplotlib and wxmpl
+* Added scrolling panels to PlotEditFrame
+* Added plot edit tool, fixed printing, added interpreter functions, documentation
+* Added grid tool and fixed zoom/pan for multiple axes.  Also added menu items for import/export text and get\_data function to interpreter
+* initial commit
